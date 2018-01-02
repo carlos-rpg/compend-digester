@@ -35,7 +35,12 @@ def process_high_speed_data_file(data_file):
     high_speed_data.loc[:, 'HSD Stroke'] -= limits_average
 
     # Calculate a movement direction column
-    calculate_movement_directions(high_speed_data)
+    directions = high_speed_data.loc[:, 'HSD Friction'].apply(np.sign)
+
+    if directions.isin([-1]).any():
+        high_speed_data['HSD Direction'] = directions
+    else:
+        calculate_movement_directions(high_speed_data)
 
     # Calculate the cycle every data row belongs to
     class Tracker:
