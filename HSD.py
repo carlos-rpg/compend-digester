@@ -2,6 +2,26 @@ import numpy as np
 import pandas as pd
 
 
+def calculate_movement_directions(high_speed_data):
+    """Calculate the movement direction for each row in the data set based
+    upon the stroke values. This calculation method has the side effect of
+    losing the first and the last data rows.
+
+    INPUTS:
+        high_speed_data: DataFrame 
+    """
+    stroke = high_speed_data.loc[:, 'HSD Stroke'].append(
+                 pd.Series(np.nan, index=[high_speed_data.shape[0]]))
+
+    stroke_minus_1 = pd.Series(np.nan, index=[-1]).append(
+                         high_speed_data.loc[:, 'HSD Stroke'])
+
+    stroke_minus_1.index += 1
+    high_speed_data['HSD Direction'] = (stroke - stroke_minus_1).apply(np.sign)
+    high_speed_data.dropna(inplace=True)
+    high_speed_data.index -= 1
+
+
 def process_high_speed_data_file(data_file):
 
     # Read the tsv data file excluding the first rows
@@ -14,18 +34,8 @@ def process_high_speed_data_file(data_file):
 
     high_speed_data.loc[:, 'HSD Stroke'] -= limits_average
 
-    # Calculate the movement direction for each data row
-    HSD_stroke = high_speed_data.loc[:, 'HSD Stroke'].append(
-        pd.Series(np.nan, index=[high_speed_data.shape[0]]))
-
-    HSD_stroke_minus_1 = pd.Series(np.nan, index=[-1]).append(
-        high_speed_data.loc[:, 'HSD Stroke'])
-
-    HSD_stroke_minus_1.index += 1
-    high_speed_data['HSD Direction'] = (
-        HSD_stroke - HSD_stroke_minus_1).apply(np.sign)
-    high_speed_data.dropna(inplace=True)
-    high_speed_data.index -= 1
+    # Calculate a movement direction column
+    calculate_movement_directions(high_speed_data)
 
     # Calculate the cycle every data row belongs to
     class Tracker:
@@ -56,8 +66,7 @@ def process_high_speed_data_file(data_file):
     filtered_high_speed_data.loc[:, 'HSD Friction'].apply(np.abs)
 
     # Group data by cycle and average values for each group
-    averaged_high_speed_data = filtered_high_speed_data.groupby(
-        'HSD Cycle').mean()
+    averaged_high_speed_data = filtered_high_speed_data.groupby('HSD Cycle').mean()
 
     # Save data
     averaged_high_speed_data.drop('HSD Direction', axis=1, inplace=True)
