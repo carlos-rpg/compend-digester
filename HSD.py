@@ -8,7 +8,7 @@ def calculate_movement_directions(high_speed_data):
     losing the first and the last data rows.
 
     INPUTS:
-        high_speed_data: DataFrame 
+        high_speed_data: DataFrame
     """
     stroke = high_speed_data.loc[:, 'HSD Stroke'].append(
                  pd.Series(np.nan, index=[high_speed_data.shape[0]]))
@@ -40,7 +40,7 @@ def filter_out_outer_values(data, length_factor=0.1):
     central_values = ((data.loc[:, 'HSD Stroke'] <= max_filter_limit) &
                       (data.loc[:, 'HSD Stroke'] >= min_filter_limit))
 
-    return data.loc[central_values]   
+    return data.loc[central_values].copy()
 
 
 def process_high_speed_data_file(data_file):
@@ -83,7 +83,8 @@ def process_high_speed_data_file(data_file):
     filtered_high_speed_data = filter_out_outer_values(high_speed_data)
 
     # Forces in absolute value
-    filtered_high_speed_data.loc[:, 'HSD Friction'].apply(np.abs)
+    HSD_abs_friction = filtered_high_speed_data.loc[:, 'HSD Friction'].abs()
+    filtered_high_speed_data.loc[:, 'HSD Friction'] = HSD_abs_friction
 
     # Group data by cycle and average values for each group
     averaged_high_speed_data = filtered_high_speed_data.groupby('HSD Cycle').mean()
