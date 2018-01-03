@@ -22,17 +22,22 @@ def calculate_movement_directions(high_speed_data):
     high_speed_data.index -= 1
 
 
-def filter_out_outer_values(data, length_factor=0.1):
+def filter_out_outer_values(data, length_factor):
     """Filters out from the data the values that don't belong inside the
     wear track's central region. That region is defined by length_factor as
-    a fraction of the wear track's length, by default 0.1 (10%).
+    a fraction of the wear track's length.
 
     INPUT:
         data: DataFrame
-        length_factor: float
+        length_factor: float between 0.0 and 1.0
 
     OUTPUT:
         DataFrame
+
+    EXAMPLE:
+        A length factor of 0.1 applied on a stroke length of 10 mm will filter
+        out all values outside of  0.1 * 10 mm / 2 = 0.5 mm around the
+        weartrack's center.
     """
     max_filter_limit = data.loc[:, 'HSD Stroke'].max() * length_factor / 2
     min_filter_limit = data.loc[:, 'HSD Stroke'].min() * length_factor / 2
@@ -101,7 +106,7 @@ def process_high_speed_data_file(data_file):
     calculate_cycle_values(high_speed_data)
 
     # Filter out data that isn't located around the centre
-    filtered_high_speed_data = filter_out_outer_values(high_speed_data)
+    filtered_high_speed_data = filter_out_outer_values(high_speed_data, 0.1)
 
     # Forces in absolute value
     HSD_abs_friction = filtered_high_speed_data.loc[:, 'HSD Friction'].abs()

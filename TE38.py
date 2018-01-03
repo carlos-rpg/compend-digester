@@ -4,13 +4,12 @@ import os.path
 import HSD
 
 
-def extract_file_name(file_path, extract_file_extension=True):
+def extract_file_name(file_path, extract_file_extension):
     """Takes a file route and returns the name with or without its extesion.
     This function is OS independent.
 
     INPUT:
         file_path: string
-
         extract_file_extension: boolean
 
     OUTPUT:
@@ -66,7 +65,7 @@ def extract_high_speed_file_name(text_line):
     return text_line[initial_index:final_index]
 
 
-def skip_initial_rows(file, last_skippable_line='Test started at'):
+def skip_initial_rows(file, last_skippable_line):
     """Skips the first lines in an opened file, the last line to be ignored
     can be given as a string that represents totally o partially the line, or
     an integer that represents the last line to be skipped (zero based).
@@ -97,9 +96,9 @@ def skip_initial_rows(file, last_skippable_line='Test started at'):
 
 def process_test_files(main_test_file_path):
 
-    main_test_file_name = extract_file_name(main_test_file_path)
+    main_test_file_name = extract_file_name(main_test_file_path, True)
     with open(main_test_file_name) as origin_file:
-        skip_initial_rows(origin_file)
+        skip_initial_rows(origin_file, 'Test started at')
         table_header = convert_data_row_to_csv_format(origin_file.readline())
         # Add the two new columns that will be extracted from the fast data
         # files
