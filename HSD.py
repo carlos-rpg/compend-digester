@@ -43,6 +43,40 @@ def filter_out_outer_values(data, length_factor=0.1):
     return data.loc[central_values].copy()
 
 
+def calculate_cycle_values(data):
+    """From the data in the HSD Direction column, the cycle that
+    every data row belongs to is calculated and added as a new data column.
+
+    INPUT:
+        data: DataFrame
+    """
+    class Tracker:
+        """This class acts as a data container for the assign_cycle function,
+        since it's needed to keep track of some variables out of its scope.
+        """
+        cycle = 0
+        initial_sign = data.get_value(0, 'HSD Direction')
+        former_sign = -initial_sign
+
+    def assign_cycle(sign):
+        """Gives a cycle value to the sign provided, relative to the initial
+        sign on the data and the sign assigned just before.
+
+        INPUT:
+            sign: integer with values 1 or -1
+
+        OUTPUT:
+            integer
+        """
+        if Tracker.initial_sign == sign and Tracker.former_sign != sign:
+            Tracker.cycle += 1
+
+        Tracker.former_sign = sign
+        return Tracker.cycle
+
+    data['HSD Cycle'] = data.loc[:, 'HSD Direction'].apply(assign_cycle)
+
+
 def process_high_speed_data_file(data_file):
 
     # Read the tsv data file excluding the first rows
@@ -64,20 +98,7 @@ def process_high_speed_data_file(data_file):
         calculate_movement_directions(high_speed_data)
 
     # Calculate the cycle every data row belongs to
-    class Tracker:
-        cycle = 0
-        initial_sign = high_speed_data.get_value(0, 'HSD Direction')
-        former_sign = -initial_sign
-
-    def assign_cycle(sign):
-
-        if Tracker.initial_sign == sign and Tracker.former_sign != sign:
-            Tracker.cycle += 1
-
-        Tracker.former_sign = sign
-        return Tracker.cycle
-
-    high_speed_data['HSD Cycle'] = high_speed_data.loc[:, 'HSD Direction'].apply(assign_cycle)
+    calculate_cycle_values(high_speed_data)
 
     # Filter out data that isn't located around the centre
     filtered_high_speed_data = filter_out_outer_values(high_speed_data)
