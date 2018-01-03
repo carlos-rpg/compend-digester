@@ -5,7 +5,7 @@ import HSD
 
 
 def extract_file_name(file_path, extract_file_extension=True):
-    """Takes a file route and returns the name with or without its extesion. 
+    """Takes a file route and returns the name with or without its extesion.
     This function is OS independent.
 
     INPUT:
@@ -17,7 +17,7 @@ def extract_file_name(file_path, extract_file_extension=True):
         string representing the file name
 
     EXAMPLES:
-        'bar.txt', './bar.txt', 'C:\foo\bar.txt' or './foo/bar.txt' will 
+        'bar.txt', './bar.txt', 'C:\foo\bar.txt' or './foo/bar.txt' will
         all return 'bar.txt' with the default keyword, otherwise returns 'bar'
     """
     file_name_with_extension = os.path.split(file_path)[-1]
@@ -30,7 +30,7 @@ def extract_file_name(file_path, extract_file_extension=True):
 
 
 def convert_data_row_to_csv_format(data_row):
-    """Takes a data row from a Compend 2000 data file, removes the initial 
+    """Takes a data row from a Compend 2000 data file, removes the initial
     and trailing tabs, and substitutes the rest of the tabs for commas.
 
     INPUT:
@@ -40,14 +40,14 @@ def convert_data_row_to_csv_format(data_row):
         string
 
     EXAMPLES:
-        '\tvalue 1\tvalue 2\tvalue 3\tvalue 4\tvalue 5\t' returns 
+        '\tvalue 1\tvalue 2\tvalue 3\tvalue 4\tvalue 5\t' returns
         'value 1,value 2,value 3,value 4,value 5'
     """
     return data_row.strip().replace('\t', ',')
 
 
 def extract_high_speed_file_name(text_line):
-    """Takes a data row that signals the start of high speed data adquisition 
+    """Takes a data row that signals the start of high speed data adquisition
     from a Compend 2000 data file, and returns the name of the data file where
     it has been stored.
 
@@ -66,18 +66,40 @@ def extract_high_speed_file_name(text_line):
     return text_line[initial_index:final_index]
 
 
+def skip_initial_rows(file, last_skippable_line='Test started at'):
+    """Skips the first lines in an opened file, the last line to be ignored
+    can be given as a string that represents totally o partially the line, or
+    an integer that represents the last line to be skipped (zero based).
+
+    The function modifies inplace the file object, and returns the last line
+    to be skipped.
+
+    INPUT:
+        file: a file objext (_io.TextIOWrapper)
+        last_skippable_line: str or int
+
+    OUTPUT:
+        str
+    """
+    if isinstance(last_skippable_line, str):
+        for line in file:
+            if line.startswith(last_skippable_line):
+                return line
+            else:
+                continue
+    elif isinstance(last_skippable_line, int):
+        for line_number in range(last_skippable_line):
+            line = file.readline()
+        return line
+    else:
+        raise TypeError('last_skippable_line is not a string or integer')
+
+
 def process_test_files(main_test_file_path):
 
     main_test_file_name = extract_file_name(main_test_file_path)
     with open(main_test_file_name) as origin_file:
-        # Skip the initial rows until the real data begins
-        for line in origin_file:
-            if line.startswith('Test started at '):
-                break
-            else:
-                continue
-
-        file_name = extract_file_name(main_test_file_name, False)
+        skip_initial_rows(origin_file)
         table_header = convert_data_row_to_csv_format(origin_file.readline())
         # Add the two new columns that will be extracted from the fast data
         # files
@@ -85,6 +107,7 @@ def process_test_files(main_test_file_path):
                                  'HSD Friction Force (N)',
                                  'HSD Friction Coeff\n'])
 
+        file_name = extract_file_name(main_test_file_name, False)
         with open(f'{file_name}.csv', 'w') as final_file:
             final_file.write(table_header)
             for line in origin_file:
