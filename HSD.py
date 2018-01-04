@@ -2,24 +2,24 @@ import numpy as np
 import pandas as pd
 
 
-def calculate_movement_directions(high_speed_data):
+def calculate_movement_directions(data):
     """Calculate the movement direction for each row in the data set based
     upon the stroke values. This calculation method has the side effect of
     losing the first and the last data rows.
 
     INPUTS:
-        high_speed_data: DataFrame
+        data: DataFrame
     """
-    stroke = high_speed_data.loc[:, 'HSD Stroke'].append(
-                 pd.Series(np.nan, index=[high_speed_data.shape[0]]))
+    stroke = data.loc[:, 'HSD Stroke'].append(
+                 pd.Series(np.nan, index=[data.shape[0]]))
 
     stroke_minus_1 = pd.Series(np.nan, index=[-1]).append(
-                         high_speed_data.loc[:, 'HSD Stroke'])
+                         data.loc[:, 'HSD Stroke'])
 
     stroke_minus_1.index += 1
-    high_speed_data['HSD Direction'] = (stroke - stroke_minus_1).apply(np.sign)
-    high_speed_data.dropna(inplace=True)
-    high_speed_data.index -= 1
+    data['HSD Direction'] = (stroke - stroke_minus_1).apply(np.sign)
+    data.dropna(inplace=True)
+    data.index -= 1
 
 
 def filter_out_outer_values(data, length_factor):
@@ -48,20 +48,20 @@ def filter_out_outer_values(data, length_factor):
     return data.loc[central_values].copy()
 
 
-def calculate_cycle_values(data, initial_cycle):
+def calculate_cycle_values(data, cycle_initial):
     """From the data in the HSD Direction column, the cycle that
     every data row belongs to is calculated and added as a new data column.
-    The cycle count starts at the value provided in initial_cycle.
+    The cycle count starts at the value provided in cycle_initial.
 
     INPUT:
         data: DataFrame
-        initial_cycle: int
+        cycle_initial: int
     """
     class Tracker:
         """This class acts as a data container for the assign_cycle function,
         since it's needed to keep track of some variables out of its scope.
         """
-        cycle = initial_cycle
+        cycle = cycle_initial
         initial_sign = data.get_value(0, 'HSD Direction')
         former_sign = -initial_sign
 
@@ -101,7 +101,9 @@ def process_high_speed_data_file(data_file,
 
     # Calculate a time column
     time_final = time_initial + len(high_speed_data) / frequency_adquisition
-    high_speed_data['HSD Time'] = np.linspace(time_initial, time_final, len(high_speed_data))
+    high_speed_data['HSD Time'] = np.linspace(time_initial,
+                                              time_final,
+                                              len(high_speed_data))
 
     # Calculate a movement direction column
     directions = high_speed_data.loc[:, 'HSD Friction'].apply(np.sign)
@@ -127,5 +129,5 @@ def process_high_speed_data_file(data_file,
     # Save data
     averaged_high_speed_data.drop('HSD Direction', axis=1, inplace=True)
     averaged_high_speed_data.reset_index(inplace=True)
-    data_file_name = data_file[:-4]
-    averaged_high_speed_data.to_csv(f'{data_file_name}.csv', index=False)
+    return averaged_high_speed_data
+
