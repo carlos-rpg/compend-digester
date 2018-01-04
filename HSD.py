@@ -99,6 +99,10 @@ def process_high_speed_data_file(data_file,
 
     high_speed_data.loc[:, 'HSD Stroke'] -= limits_average
 
+    # Calculate a time column
+    time_final = time_initial + len(high_speed_data) / frequency_adquisition
+    high_speed_data['HSD Time'] = np.linspace(time_initial, time_final, len(high_speed_data))
+
     # Calculate a movement direction column
     directions = high_speed_data.loc[:, 'HSD Friction'].apply(np.sign)
 
