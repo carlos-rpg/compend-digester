@@ -2,6 +2,7 @@
 
 import os.path
 import HSD
+import re
 
 
 def extract_file_name(file_path, extract_file_extension):
@@ -42,7 +43,7 @@ def convert_data_row_to_csv_format(data_row):
         '\tvalue 1\tvalue 2\tvalue 3\tvalue 4\tvalue 5\t' returns
         'value 1,value 2,value 3,value 4,value 5'
     """
-    return data_row.strip().replace('\t', ',')
+    return str.join('', [data_row.strip().replace('\t', ','), '\n'])
 
 
 def extract_high_speed_file_name(text_line):
@@ -94,29 +95,70 @@ def skip_initial_rows(file, last_skippable_line):
         raise TypeError('last_skippable_line is not a string or integer')
 
 
-def process_test_files(main_test_file):
+def extract_value(line, field):
 
-    main_test_file_name = extract_file_name(main_test_file, True)
-    with open(main_test_file_name) as origin_file:
-        skip_initial_rows(origin_file, 'Test started at')
-        table_header = convert_data_row_to_csv_format(origin_file.readline())
-        # Add the two new columns that will be extracted from the fast data
-        # files
-        table_header = ','.join([table_header,
-                                 'HSD Friction Force (N)',
-                                 'HSD Friction Coeff\n'])
+    fields = {'Total Cycles': (10, int),
+              'Test Time':    (3, float),
+              'Load (N)':     (6, float)}
 
-        file_name = extract_file_name(main_test_file_name, False)
-        with open(f'{file_name}.csv', 'w') as final_file:
-            final_file.write(table_header)
-            for line in origin_file:
-                if line.startswith('\t'):
-                    new_data_row = convert_data_row_to_csv_format(line)
-                    # Commas mark the space for the two new columns,
-                    # followed by a new line char
-                    final_file.write(''.join([new_data_row, ',,\n']))
-                elif line.startswith('Fast data in'):
-                    high_speed_file_name = extract_high_speed_file_name(line)
-                    HSD.process_high_speed_data_file(high_speed_file_name)
-                else:
-                    break
+    index, convert = fields[field]
+    return convert(line.split(',')[index])
+
+
+def extract_adquisition_frequency(file):
+
+    pattern = re.compile(r'^[\w\s]*?(\d+)')
+    for line in file:
+        match = pattern.search(line)
+        if match:
+            return int(match.group(1))
+
+
+def digest_test_file(main_test_file, frequency_adquisition=1000):
+
+    HSD_data_file_header = ','.join(['Cycle',
+                                     'Stroke (mm)',
+                                     'Contact Potential (mV)',
+                                     'Friction (N)',
+                                     'Time (s)',
+                                     'Load (N)',
+                                     'CoF'])
+
+    file_name_with_extension = extract_file_name(main_test_file, True)
+    file_name = extract_file_name(main_test_file, False)
+
+    with open(file_name_with_extension)    as source_file, \
+         open(f'{file_name}.csv', 'w')     as data_file,   \
+         open(f'HSD_{file_name}.csv', 'w') as HSD_data_file:
+
+        skip_initial_rows(source_file, 'Test started at')
+        data_file_header = convert_data_row_to_csv_format(source_file.readline())
+        data_file.write(data_file_header)
+        HSD_data_file.write(HSD_data_file_header + '\n')
+
+        load_former_value = cycle_former_value = time_former_value = None
+
+        for line in source_file:
+
+            if line.startswith('\t'):
+                line = convert_data_row_to_csv_format(line)
+                data_file.write(line)
+                load_former_value = extract_value(line, 'Load (N)')
+                cycle_former_value = extract_value(line, 'Total Cycles')
+                time_former_value = extract_value(line, 'Test Time')
+
+            elif line.startswith('Fast data in'):
+                HSD_file_name = extract_high_speed_file_name(line)
+                HSD_data = HSD.process_data(HSD_file_name,
+                                            cycle_former_value,
+                                            time_former_value,
+                                            load_former_value,
+                                            frequency_adquisition)
+                HSD_data.to_csv(HSD_data_file,
+                                mode='a',
+                                header=False,
+                                index=False)
+
+            else:
+                break
+

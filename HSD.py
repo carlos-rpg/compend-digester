@@ -84,50 +84,53 @@ def calculate_cycle_values(data, cycle_initial):
     data['HSD Cycle'] = data.loc[:, 'HSD Direction'].apply(assign_cycle)
 
 
-def process_high_speed_data_file(data_file,
-                                 cycle_initial,
-                                 time_initial,
-                                 frequency_adquisition):
+def process_data(data_file, cycle_initial, time_initial, load_initial, frequency_adquisition):
 
     # Read the tsv data file excluding the first rows
-    high_speed_data = pd.read_csv(data_file, skiprows=4, sep='\t')
+    data = pd.read_csv(data_file, skiprows=4, sep='\t')
 
     # Center the stroke data so the max and min limits are equidistant to
     # zero
-    limits_average = (high_speed_data.loc[:, 'HSD Stroke'].max() +
-                      high_speed_data.loc[:, 'HSD Stroke'].min()) / 2
+    limits_average = (data.loc[:, 'HSD Stroke'].max() +
+                      data.loc[:, 'HSD Stroke'].min()) / 2
 
-    high_speed_data.loc[:, 'HSD Stroke'] -= limits_average
+    data.loc[:, 'HSD Stroke'] -= limits_average
 
     # Calculate a time column
-    time_final = time_initial + len(high_speed_data) / frequency_adquisition
-    high_speed_data['HSD Time'] = np.linspace(time_initial,
-                                              time_final,
-                                              len(high_speed_data))
+    time_final = time_initial + len(data) / frequency_adquisition
+    data['HSD Time'] = np.linspace(time_initial, time_final, len(data))
 
     # Calculate a movement direction column
-    directions = high_speed_data.loc[:, 'HSD Friction'].apply(np.sign)
+    directions = data.loc[:, 'HSD Friction'].apply(np.sign)
 
     if directions.isin([-1]).any():
-        high_speed_data['HSD Direction'] = directions
+        data['HSD Direction'] = directions
     else:
-        calculate_movement_directions(high_speed_data)
+        calculate_movement_directions(data)
 
     # Calculate the cycle every data row belongs to
-    calculate_cycle_values(high_speed_data, cycle_initial)
+    calculate_cycle_values(data, cycle_initial)
 
     # Filter out data that isn't located around the centre
-    filtered_high_speed_data = filter_out_outer_values(high_speed_data, 0.1)
+    filtered_data = filter_out_outer_values(data, 0.1)
 
     # Forces in absolute value
-    HSD_abs_friction = filtered_high_speed_data.loc[:, 'HSD Friction'].abs()
-    filtered_high_speed_data.loc[:, 'HSD Friction'] = HSD_abs_friction
+    HSD_abs_friction = filtered_data.loc[:, 'HSD Friction'].abs()
+    filtered_data.loc[:, 'HSD Friction'] = HSD_abs_friction
 
     # Group data by cycle and average values for each group
-    averaged_high_speed_data = filtered_high_speed_data.groupby('HSD Cycle').mean()
+    averaged_data = filtered_data.groupby('HSD Cycle').mean()
+
+    # Add a load column
+    averaged_data['HSD Load'] = load_initial
+
+    # Calculate a coefficient of friction column
+    averaged_data['HSD CoF'] = averaged_data.loc[:, 'HSD Friction'] / averaged_data.loc[:, 'HSD Load']
 
     # Save data
-    averaged_high_speed_data.drop('HSD Direction', axis=1, inplace=True)
-    averaged_high_speed_data.reset_index(inplace=True)
-    return averaged_high_speed_data
+    averaged_data.drop(['HSD Direction', 'HSD Force Input'],
+                       axis=1,
+                       inplace=True)
+    averaged_data.reset_index(inplace=True)
+    return averaged_data
 
