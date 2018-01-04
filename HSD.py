@@ -48,18 +48,20 @@ def filter_out_outer_values(data, length_factor):
     return data.loc[central_values].copy()
 
 
-def calculate_cycle_values(data):
+def calculate_cycle_values(data, initial_cycle):
     """From the data in the HSD Direction column, the cycle that
     every data row belongs to is calculated and added as a new data column.
+    The cycle count starts at the value provided in initial_cycle.
 
     INPUT:
         data: DataFrame
+        initial_cycle: int
     """
     class Tracker:
         """This class acts as a data container for the assign_cycle function,
         since it's needed to keep track of some variables out of its scope.
         """
-        cycle = 0
+        cycle = initial_cycle
         initial_sign = data.get_value(0, 'HSD Direction')
         former_sign = -initial_sign
 
@@ -82,7 +84,10 @@ def calculate_cycle_values(data):
     data['HSD Cycle'] = data.loc[:, 'HSD Direction'].apply(assign_cycle)
 
 
-def process_high_speed_data_file(data_file):
+def process_high_speed_data_file(data_file,
+                                 cycle_initial,
+                                 time_initial,
+                                 frequency_adquisition):
 
     # Read the tsv data file excluding the first rows
     high_speed_data = pd.read_csv(data_file, skiprows=4, sep='\t')
@@ -103,7 +108,7 @@ def process_high_speed_data_file(data_file):
         calculate_movement_directions(high_speed_data)
 
     # Calculate the cycle every data row belongs to
-    calculate_cycle_values(high_speed_data)
+    calculate_cycle_values(high_speed_data, cycle_initial)
 
     # Filter out data that isn't located around the centre
     filtered_high_speed_data = filter_out_outer_values(high_speed_data, 0.1)

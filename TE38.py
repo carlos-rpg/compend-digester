@@ -94,9 +94,9 @@ def skip_initial_rows(file, last_skippable_line):
         raise TypeError('last_skippable_line is not a string or integer')
 
 
-def process_test_files(main_test_file_path):
+def process_test_files(main_test_file):
 
-    main_test_file_name = extract_file_name(main_test_file_path, True)
+    main_test_file_name = extract_file_name(main_test_file, True)
     with open(main_test_file_name) as origin_file:
         skip_initial_rows(origin_file, 'Test started at')
         table_header = convert_data_row_to_csv_format(origin_file.readline())
