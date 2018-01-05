@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import os.path
-import HSD
-import re
+import os.path, HSD, re
+import pandas as pd
 
 
 def extract_file_name(file_path, extract_file_extension):
@@ -112,6 +111,34 @@ def extract_adquisition_frequency(file):
         match = pattern.search(line)
         if match:
             return int(match.group(1))
+
+
+def digest_main_test_file(file_path):
+    """Clean the main test file (that is, the one that does not contain high
+    speed data) by removing these elements:
+        - Header
+        - Blank space
+        - "test started" and "Test finished" lines
+        - Tabs at the beginning and end of data rows
+        - "Fast data in..." lines
+
+    Leaves a clean and tidy table to work with.
+
+    INPUT:
+        file_path: string, an absolute or relative path to the main test file
+    """
+    file_name_with_extension = extract_file_name(file_path, True)
+
+    with open(file_name_with_extension) as source_file:
+        skip_initial_rows(source_file, 'Test started at')
+
+        data = pd.read_csv(source_file, sep='\t')
+        real_number_of_columns = len(data.columns) - 2
+        data.dropna(thresh=real_number_of_columns, inplace=True)
+        data.dropna(axis=1, how='all', inplace=True)
+
+    file_name = extract_file_name(file_path, False)
+    data.to_csv(f'{file_name}.csv', index=False)
 
 
 def digest_test_file(main_test_file, frequency_adquisition=1000):
