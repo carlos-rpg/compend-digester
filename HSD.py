@@ -10,11 +10,11 @@ def calculate_movement_directions(data):
     INPUTS:
         data: DataFrame
     """
-    stroke = data.loc[:, 'HSD Stroke'].append(
-                 pd.Series(np.nan, index=[data.shape[0]]))
+    empty_end_value = pd.Series(np.nan, index=[len(data)])
+    stroke = data.loc[:, 'HSD Stroke'].append(empty_end_value)
 
-    stroke_minus_1 = pd.Series(np.nan, index=[-1]).append(
-                         data.loc[:, 'HSD Stroke'])
+    empty_start_value = pd.Series(np.nan, index=[-1])
+    stroke_minus_1 = empty_start_value.append(data.loc[:, 'HSD Stroke'])
 
     stroke_minus_1.index += 1
     data['HSD Direction'] = (stroke - stroke_minus_1).apply(np.sign)
@@ -84,7 +84,11 @@ def calculate_cycle_values(data, cycle_initial):
     data['HSD Cycle'] = data.loc[:, 'HSD Direction'].apply(assign_cycle)
 
 
-def process_data(data_file, cycle_initial, time_initial, load_initial, frequency_adquisition):
+def process_data(data_file,
+                 cycle_initial,
+                 time_initial,
+                 load_initial,
+                 frequency_adquisition):
 
     # Read the tsv data file excluding the first rows
     data = pd.read_csv(data_file, skiprows=4, sep='\t')
@@ -125,7 +129,9 @@ def process_data(data_file, cycle_initial, time_initial, load_initial, frequency
     averaged_data['HSD Load'] = load_initial
 
     # Calculate a coefficient of friction column
-    averaged_data['HSD CoF'] = averaged_data.loc[:, 'HSD Friction'] / averaged_data.loc[:, 'HSD Load']
+    HSD_Friction = averaged_data.loc[:, 'HSD Friction']
+    HSD_Load = averaged_data.loc[:, 'HSD Load']
+    averaged_data['HSD CoF'] = HSD_Friction / HSD_Load
 
     # Save data
     averaged_data.drop(['HSD Direction', 'HSD Force Input'],
@@ -133,4 +139,3 @@ def process_data(data_file, cycle_initial, time_initial, load_initial, frequency
                        inplace=True)
     averaged_data.reset_index(inplace=True)
     return averaged_data
-

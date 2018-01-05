@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os.path
 import HSD
 import re
@@ -98,8 +96,8 @@ def skip_initial_rows(file, last_skippable_line):
 def extract_value(line, field):
 
     fields = {'Total Cycles': (10, int),
-              'Test Time':    (3, float),
-              'Load (N)':     (6, float)}
+              'Test Time': (3, float),
+              'Load (N)': (6, float)}
 
     index, convert = fields[field]
     return convert(line.split(',')[index])
@@ -127,12 +125,13 @@ def digest_test_file(main_test_file, frequency_adquisition=1000):
     file_name_with_extension = extract_file_name(main_test_file, True)
     file_name = extract_file_name(main_test_file, False)
 
-    with open(file_name_with_extension)    as source_file, \
-         open(f'{file_name}.csv', 'w')     as data_file,   \
-         open(f'HSD_{file_name}.csv', 'w') as HSD_data_file:
+    with open(file_name_with_extension) as source_file, \
+        open(f'{file_name}.csv', 'w') as data_file, \
+            open(f'HSD_{file_name}.csv', 'w') as HSD_data_file:
 
         skip_initial_rows(source_file, 'Test started at')
-        data_file_header = convert_data_row_to_csv_format(source_file.readline())
+        data_file_header = source_file.readline()
+        data_file_header = convert_data_row_to_csv_format(data_file_header)
         data_file.write(data_file_header)
         HSD_data_file.write(HSD_data_file_header + '\n')
 
@@ -161,4 +160,3 @@ def digest_test_file(main_test_file, frequency_adquisition=1000):
 
             else:
                 break
-
