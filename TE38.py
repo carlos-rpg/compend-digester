@@ -104,13 +104,27 @@ def extract_value(line, field):
     return convert(line.split('\t')[index])
 
 
-def extract_adquisition_frequency(file):
+def extract_adquisition_rate(line):
+    """Extracts the adquisition rate in Hz from the line of text that
+    is supposed to contain that information. Raises an exception if it is not
+    found.
 
-    pattern = re.compile(r'^[\w\s]*?(\d+)')
-    for line in file:
-        match = pattern.search(line)
-        if match:
-            return int(match.group(1))
+    INPUT:
+        line: string, file line containing a number followed by "Hz"
+
+    OUTPUT:
+        integer
+
+    EXAMPLE:
+        From the string 'High speed data using 1000 Hz Trigger Frequency.'
+        the function will return 1000.
+    """
+    match = re.search(r'(\d+) Hz', line)
+
+    if match:
+        return int(match.group(1))
+    else:
+        raise RuntimeError(f'Adquisition rate not found in line: {line}')
 
 
 def digest_main_test_file(file_path):
@@ -141,7 +155,7 @@ def digest_main_test_file(file_path):
     data.to_csv(f'{file_name}.csv', index=False)
 
 
-def digest_HSD_test_files(file_path, adquisition_rate):
+def digest_HSD_test_files(file_path, adquisition_rate=0):
     """Reads all the test's high speed data (HSD) files from the information
     on the main test file (that is, the one that does not contain high speed
     data), and creates a new file that:
@@ -149,6 +163,9 @@ def digest_HSD_test_files(file_path, adquisition_rate):
         - Adds new data columns: cycle, load, and time.
         - Summarizes the data per cycle, and only with the values located
           around the center of the wear track.
+
+    If adquisition_rate is not provided (is set to zero), the function will
+    attempt to extract it from the first HSD file.
 
     INPUT:
         file_path: string, an absolute or relative path to the main test file.
@@ -165,6 +182,14 @@ def digest_HSD_test_files(file_path, adquisition_rate):
 
     file_name = extract_file_name(file_path, False)
     file_name_with_extension = extract_file_name(file_path, True)
+    first_HSD_name = file_name_with_extension.replace('.', '-h001.')
+
+    if not adquisition_rate:
+
+        with open(first_HSD_name) as first_HSD_file:
+            line = skip_initial_rows(first_HSD_file, 'High speed data')
+
+        adquisition_rate = extract_adquisition_rate(line)
 
     with open(file_name_with_extension) as source_file, \
         open(f'{file_name}_HSD.csv', 'w') as HSD_file:
@@ -181,7 +206,6 @@ def digest_HSD_test_files(file_path, adquisition_rate):
                 last_load = extract_value(line, 'Load (N)')
                 last_cycle = extract_value(line, 'Total Cycles')
                 last_time = extract_value(line, 'Test Time')
-
             elif line.startswith('Fast data in'):
                 HSD_file_name = extract_high_speed_file_name(line)
                 HSD_data = HSD.process_data(HSD_file_name,
@@ -190,6 +214,5 @@ def digest_HSD_test_files(file_path, adquisition_rate):
                                             last_load,
                                             adquisition_rate)
                 HSD_data.to_csv(HSD_file, mode='a', header=False, index=False)
-
             else:
                 break
