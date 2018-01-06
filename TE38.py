@@ -1,6 +1,7 @@
 import os.path
 import HSD
 import re
+import pandas as pd
 
 
 def extract_file_name(file_path, extract_file_extension):
@@ -95,12 +96,12 @@ def skip_initial_rows(file, last_skippable_line):
 
 def extract_value(line, field):
 
-    fields = {'Total Cycles': (10, int),
-              'Test Time': (3, float),
-              'Load (N)': (6, float)}
+    fields = {'Total Cycles': (11, int),
+              'Test Time': (4, float),
+              'Load (N)': (7, float)}
 
     index, convert = fields[field]
-    return convert(line.split(',')[index])
+    return convert(line.split('\t')[index])
 
 
 def extract_adquisition_frequency(file):
@@ -112,51 +113,83 @@ def extract_adquisition_frequency(file):
             return int(match.group(1))
 
 
-def digest_test_file(main_test_file, frequency_adquisition=1000):
+def digest_main_test_file(file_path):
+    """Clean the main test file (that is, the one that does not contain high
+    speed data) by removing these elements:
+        - Data previous to the header
+        - Blank space
+        - "test started" and "Test finished" lines
+        - Tabs at the beginning and end of data rows
+        - "Fast data in..." lines
 
-    HSD_data_file_header = ','.join(['Cycle',
-                                     'Stroke (mm)',
-                                     'Contact Potential (mV)',
-                                     'Friction (N)',
-                                     'Time (s)',
-                                     'Load (N)',
-                                     'CoF'])
+    Leaves a clean and tidy table to work with.
 
-    file_name_with_extension = extract_file_name(main_test_file, True)
-    file_name = extract_file_name(main_test_file, False)
+    INPUT:
+        file_path: string, an absolute or relative path to the main test file
+    """
+    file_name_with_extension = extract_file_name(file_path, True)
+
+    with open(file_name_with_extension) as source_file:
+        skip_initial_rows(source_file, 'Test started at')
+
+        data = pd.read_csv(source_file, sep='\t')
+        real_number_of_columns = len(data.columns) - 2
+        data.dropna(thresh=real_number_of_columns, inplace=True)
+        data.dropna(axis=1, how='all', inplace=True)
+
+    file_name = extract_file_name(file_path, False)
+    data.to_csv(f'{file_name}.csv', index=False)
+
+
+def digest_HSD_test_files(file_path, adquisition_rate):
+    """Reads all the test's high speed data (HSD) files from the information
+    on the main test file (that is, the one that does not contain high speed
+    data), and creates a new file that:
+        - Removes text previous to the header.
+        - Adds new data columns: cycle, load, and time.
+        - Summarizes the data per cycle, and only with the values located
+          around the center of the wear track.
+
+    INPUT:
+        file_path: string, an absolute or relative path to the main test file.
+
+        adquisition_rate: int, data adquisition frequency in Hz.
+    """
+    HSD_header = ','.join(['Cycle',
+                           'Stroke (mm)',
+                           'Contact Potential (mV)',
+                           'Friction (N)',
+                           'Time (s)',
+                           'Load (N)',
+                           'CoF'])
+
+    file_name = extract_file_name(file_path, False)
+    file_name_with_extension = extract_file_name(file_path, True)
 
     with open(file_name_with_extension) as source_file, \
-        open(f'{file_name}.csv', 'w') as data_file, \
-            open(f'HSD_{file_name}.csv', 'w') as HSD_data_file:
+        open(f'{file_name}_HSD.csv', 'w') as HSD_file:
 
+        HSD_file.write(HSD_header + '\n')
         skip_initial_rows(source_file, 'Test started at')
-        data_file_header = source_file.readline()
-        data_file_header = convert_data_row_to_csv_format(data_file_header)
-        data_file.write(data_file_header)
-        HSD_data_file.write(HSD_data_file_header + '\n')
+        source_file.readline()
 
-        load_former_value = cycle_former_value = time_former_value = None
+        last_load = last_time = last_cycle = None
 
         for line in source_file:
 
             if line.startswith('\t'):
-                line = convert_data_row_to_csv_format(line)
-                data_file.write(line)
-                load_former_value = extract_value(line, 'Load (N)')
-                cycle_former_value = extract_value(line, 'Total Cycles')
-                time_former_value = extract_value(line, 'Test Time')
+                last_load = extract_value(line, 'Load (N)')
+                last_cycle = extract_value(line, 'Total Cycles')
+                last_time = extract_value(line, 'Test Time')
 
             elif line.startswith('Fast data in'):
                 HSD_file_name = extract_high_speed_file_name(line)
                 HSD_data = HSD.process_data(HSD_file_name,
-                                            cycle_former_value,
-                                            time_former_value,
-                                            load_former_value,
-                                            frequency_adquisition)
-                HSD_data.to_csv(HSD_data_file,
-                                mode='a',
-                                header=False,
-                                index=False)
+                                            last_cycle,
+                                            last_time,
+                                            last_load,
+                                            adquisition_rate)
+                HSD_data.to_csv(HSD_file, mode='a', header=False, index=False)
 
             else:
                 break
