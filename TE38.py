@@ -208,7 +208,7 @@ def digest_main_test_file(file_path):
     data.to_csv(f'{file_name}.csv', index=False)
 
 
-def digest_HSD_test_files(file_path, adquisition_rate=0):
+def digest_HSD_test_files(file_path):
     """Reads all the test's high speed data (HSD) files from the information
     on the main test file (that is, the one that does not contain high speed
     data), and creates a new file that:
@@ -217,25 +217,18 @@ def digest_HSD_test_files(file_path, adquisition_rate=0):
         - Summarizes the data per cycle, and only with the values located
           around the center of the wear track.
 
-    If adquisition_rate is not provided (is set to zero), the function will
-    attempt to extract it from the first HSD file.
-
     INPUT:
         file_path: string, an absolute or relative path to the main test file.
-
-        adquisition_rate: int, data adquisition frequency in Hz.
     """
     HSD_header = ','.join(HSD_columns)
     file_name = extract_file_name(file_path, False)
     file_name_with_extension = extract_file_name(file_path, True)
     first_HSD_name = file_name_with_extension.replace('.', '-h001.')
 
-    if not adquisition_rate:
+    with open(first_HSD_name) as first_HSD_file:
+        line = skip_lines(first_HSD_file, 'High speed data')
 
-        with open(first_HSD_name) as first_HSD_file:
-            line = skip_lines(first_HSD_file, 'High speed data')
-
-        adquisition_rate = extract_adquisition_rate(line)
+    adquisition_rate = extract_adquisition_rate(line)
 
     with open(file_name_with_extension) as source_file, \
         open(f'{file_name}_HSD.csv', 'w') as HSD_file:
