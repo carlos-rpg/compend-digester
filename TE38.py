@@ -65,20 +65,34 @@ def extract_high_speed_file_name(text_line):
     return text_line[initial_index:final_index]
 
 
-def skip_initial_rows(file, last_skippable_line):
-    """Skips the first lines in an opened file, the last line to be ignored
-    can be given as a string that represents totally o partially the line, or
-    an integer that represents the last line to be skipped (zero based).
+def skip_lines(file, last_skippable_line):
+    """Skips lines in an opened file until last_skippable_line is encountered,
+    the last line to be ignored can be given as a string that represents
+    the line's beginning, or as an integer that represents the index
+    of the last line to be skipped (zero based).
 
     The function modifies inplace the file object, and returns the last line
     to be skipped.
 
     INPUT:
         file: a file objext (_io.TextIOWrapper)
-        last_skippable_line: str or int
+        last_skippable_line: string or positive integer
 
     OUTPUT:
-        str
+        string
+
+    EXAMPLE:
+        If a line represented by the string "High speed data using 1000 Hz
+        Trigger Frequency" is encountered, the function will stop skipping
+        lines if the keyword last_skippable_line has a value like, but not
+        limited to:
+            - "High"
+            - "High speed data"
+            - "High speed data using 1000 Hz Trigger Frequency"
+
+        If the line's index position is known (for instance, it's the line no 4
+        in a text editor), setting a value last_skippable_line=3 will have the
+        same effect.
     """
     if isinstance(last_skippable_line, str):
         for line in file:
@@ -86,9 +100,11 @@ def skip_initial_rows(file, last_skippable_line):
                 return line
             else:
                 continue
+
     elif isinstance(last_skippable_line, int):
         for line_number in range(last_skippable_line):
             line = file.readline()
+
         return line
     else:
         raise TypeError('last_skippable_line is not a string or integer')
@@ -144,7 +160,7 @@ def digest_main_test_file(file_path):
     file_name_with_extension = extract_file_name(file_path, True)
 
     with open(file_name_with_extension) as source_file:
-        skip_initial_rows(source_file, 'Test started at')
+        skip_lines(source_file, 'Test started at')
 
         data = pd.read_csv(source_file, sep='\t')
         real_number_of_columns = len(data.columns) - 2
@@ -187,7 +203,7 @@ def digest_HSD_test_files(file_path, adquisition_rate=0):
     if not adquisition_rate:
 
         with open(first_HSD_name) as first_HSD_file:
-            line = skip_initial_rows(first_HSD_file, 'High speed data')
+            line = skip_lines(first_HSD_file, 'High speed data')
 
         adquisition_rate = extract_adquisition_rate(line)
 
@@ -195,7 +211,7 @@ def digest_HSD_test_files(file_path, adquisition_rate=0):
         open(f'{file_name}_HSD.csv', 'w') as HSD_file:
 
         HSD_file.write(HSD_header + '\n')
-        skip_initial_rows(source_file, 'Test started at')
+        skip_lines(source_file, 'Test started at')
         source_file.readline()
 
         last_load = last_time = last_cycle = None
