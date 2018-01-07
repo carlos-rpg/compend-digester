@@ -2,33 +2,36 @@ import numpy as np
 import pandas as pd
 
 
-def calculate_movement_directions(data):
+def calculate_movement_directions(data, stroke_label, direction_label):
     """Calculate the movement direction for each row in the data set based
     upon the stroke values. This calculation method has the side effect of
     losing the first and the last data rows.
 
     INPUTS:
-        data: DataFrame
+        data: DataFrame.
+        stroke_label: string, label of the stroke column in data.
+        direction_label: string, label for the new direction column.
     """
     empty_end_value = pd.Series(np.nan, index=[len(data)])
-    stroke = data.loc[:, 'HSD Stroke'].append(empty_end_value)
+    stroke = data.loc[:, stroke_label].append(empty_end_value)
 
     empty_start_value = pd.Series(np.nan, index=[-1])
-    stroke_minus_1 = empty_start_value.append(data.loc[:, 'HSD Stroke'])
+    stroke_minus_1 = empty_start_value.append(data.loc[:, stroke_label])
 
     stroke_minus_1.index += 1
-    data['HSD Direction'] = (stroke - stroke_minus_1).apply(np.sign)
+    data[direction_label] = (stroke - stroke_minus_1).apply(np.sign)
     data.dropna(inplace=True)
     data.index -= 1
 
 
-def filter_out_outer_values(data, length_factor):
+def filter_out_outer_values(data, stroke_label, length_factor):
     """Filters out from the data the values that don't belong inside the
     wear track's central region. That region is defined by length_factor as
     a fraction of the wear track's length.
 
     INPUT:
         data: DataFrame
+        stroke_label: string, label of the stroke column in data
         length_factor: float between 0.0 and 1.0
 
     OUTPUT:
@@ -39,30 +42,32 @@ def filter_out_outer_values(data, length_factor):
         out all values outside of  0.1 * 10 mm / 2 = 0.5 mm around the
         weartrack's center.
     """
-    max_filter_limit = data.loc[:, 'HSD Stroke'].max() * length_factor / 2
-    min_filter_limit = data.loc[:, 'HSD Stroke'].min() * length_factor / 2
+    max_filter_limit = data.loc[:, stroke_label].max() * length_factor / 2
+    min_filter_limit = data.loc[:, stroke_label].min() * length_factor / 2
 
-    central_values = ((data.loc[:, 'HSD Stroke'] <= max_filter_limit) &
-                      (data.loc[:, 'HSD Stroke'] >= min_filter_limit))
+    central_values = ((data.loc[:, stroke_label] <= max_filter_limit) &
+                      (data.loc[:, stroke_label] >= min_filter_limit))
 
     return data.loc[central_values].copy()
 
 
-def calculate_cycle_values(data, cycle_initial):
+def calculate_cycle_values(data, direction_label, cycle_label, initial_cycle):
     """From the data in the HSD Direction column, the cycle that
     every data row belongs to is calculated and added as a new data column.
-    The cycle count starts at the value provided in cycle_initial.
+    The cycle count starts at the value provided in initial_cycle.
 
     INPUT:
         data: DataFrame
-        cycle_initial: int
+        direction_label: string, label of the direction column in data.
+        cycle_label: string, label for the new cycle column.
+        initial_cycle: integer
     """
     class Tracker:
         """This class acts as a data container for the assign_cycle function,
         since it's needed to keep track of some variables out of its scope.
         """
-        cycle = cycle_initial
-        initial_sign = data.get_value(0, 'HSD Direction')
+        cycle = initial_cycle
+        initial_sign = data.get_value(0, direction_label)
         former_sign = -initial_sign
 
     def assign_cycle(sign):
@@ -81,13 +86,13 @@ def calculate_cycle_values(data, cycle_initial):
         Tracker.former_sign = sign
         return Tracker.cycle
 
-    data['HSD Cycle'] = data.loc[:, 'HSD Direction'].apply(assign_cycle)
+    data[cycle_label] = data.loc[:, direction_label].apply(assign_cycle)
 
 
 def process_data(data_file,
-                 cycle_initial,
-                 time_initial,
-                 load_initial,
+                 initial_cycle,
+                 initial_time,
+                 initial_load,
                  frequency_adquisition):
 
     # Read the tsv data file excluding the first rows
@@ -101,8 +106,8 @@ def process_data(data_file,
     data.loc[:, 'HSD Stroke'] -= limits_average
 
     # Calculate a time column
-    time_final = time_initial + len(data) / frequency_adquisition
-    data['HSD Time'] = np.linspace(time_initial, time_final, len(data))
+    final_time = initial_time + len(data) / frequency_adquisition
+    data['HSD Time'] = np.linspace(initial_time, final_time, len(data))
 
     # Calculate a movement direction column
     directions = data.loc[:, 'HSD Friction'].apply(np.sign)
@@ -110,13 +115,13 @@ def process_data(data_file,
     if directions.isin([-1]).any():
         data['HSD Direction'] = directions
     else:
-        calculate_movement_directions(data)
+        calculate_movement_directions(data, 'HSD Stroke', 'HSD Direction')
 
     # Calculate the cycle every data row belongs to
-    calculate_cycle_values(data, cycle_initial)
+    calculate_cycle_values(data, 'HSD Direction', 'HSD Cycle', initial_cycle)
 
     # Filter out data that isn't located around the centre
-    filtered_data = filter_out_outer_values(data, 0.1)
+    filtered_data = filter_out_outer_values(data, 'HSD Stroke', 0.1)
 
     # Forces in absolute value
     HSD_abs_friction = filtered_data.loc[:, 'HSD Friction'].abs()
@@ -126,7 +131,7 @@ def process_data(data_file,
     averaged_data = filtered_data.groupby('HSD Cycle').mean()
 
     # Add a load column
-    averaged_data['HSD Load'] = load_initial
+    averaged_data['HSD Load'] = initial_load
 
     # Calculate a coefficient of friction column
     HSD_Friction = averaged_data.loc[:, 'HSD Friction']
