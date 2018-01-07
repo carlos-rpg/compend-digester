@@ -10,7 +10,7 @@ set of TSV files that follow this structure:
 - etc...
 
 Where 'test' is a name chosen by the machine operator. If HSD capabilites are
-not enabled, Compend 2000 just generates test.TSV
+not enabled, Compend 2000 just generates test.TSV.
 
 These data files are often cumbersome to work with, this module has functions
 to deal with them in the public functions section (see module structure). In
@@ -64,15 +64,27 @@ HSD_FINAL_LABELS = ['Cycle',
 # ####################################
 
 
-def process_HSD_file(data_file,
-                     initial_cycle,
-                     initial_time,
-                     initial_load,
-                     frequency_adquisition):
+def process_HSD_file(data, init_cycle, init_time, init_load, adquisition_rate):
+    """Takes a dataframe and a series of initial values, and applies several
+    transformations to make the data more useful. Every transformation is
+    explained in a comment.
 
-    # Read the tsv data file excluding the first rows
-    data = pd.read_csv(data_file, skiprows=4, sep='\t')
+    INPUT:
+        data: DataFrame, high speed data.
 
+        init_cycle: integer, all calculated cycle values are relative to
+                    this one.
+
+        init_time: float, all calculated time values are relative to this
+                   one. value in seconds.
+
+        init_load: float, value in Newtons.
+
+        adquisition_rate: integer, value in Hz.
+
+    OUTPUT:
+        DataFrame
+    """
     # Center the stroke data so the max and min limits are equidistant to
     # zero
     limits_average = (data.loc[:, STROKE].max() +
@@ -81,19 +93,14 @@ def process_HSD_file(data_file,
     data.loc[:, STROKE] -= limits_average
 
     # Calculate a time column
-    final_time = initial_time + len(data) / frequency_adquisition
-    data[TIME] = np.linspace(initial_time, final_time, len(data))
+    final_time = init_time + len(data) / adquisition_rate
+    data[TIME] = np.linspace(init_time, final_time, len(data))
 
     # Calculate a movement direction column
-    directions = data.loc[:, FRICTION].apply(np.sign)
-
-    if directions.isin([-1]).any():
-        data[DIRECTION] = directions
-    else:
-        sf.calculate_movement_directions(data, STROKE, DIRECTION)
+    data[DIRECTION] = data.loc[:, FRICTION].apply(np.sign)
 
     # Calculate the cycle every data row belongs to
-    sf.calculate_cycle_values(data, DIRECTION, CYCLE, initial_cycle)
+    sf.calculate_cycle_values(data, DIRECTION, CYCLE, init_cycle)
 
     # Filter out data that isn't located around the centre
     filtered_data = sf.filter_out_outer_values(data, STROKE, 0.1)
@@ -106,7 +113,7 @@ def process_HSD_file(data_file,
     averaged_data = filtered_data.groupby(CYCLE).mean()
 
     # Add a load column
-    averaged_data[LOAD] = initial_load
+    averaged_data[LOAD] = init_load
 
     # Calculate a coefficient of friction column
     HSD_Friction = averaged_data.loc[:, FRICTION]
@@ -128,8 +135,9 @@ def concatenate_HSD_files(main_test_file, HSD_test_file, adquisition_rate):
     speed data adquisition started, and prepares it before concatenating.
 
     INPUT:
-        main_test_file: an opened file object (_io.TextIOWrapper)
-        HSD_test_file: an opened file object (_io.TextIOWrapper)
+        main_test_file: an opened file object (_io.TextIOWrapper).
+
+        HSD_test_file: an opened file object (_io.TextIOWrapper).
     """
     last_load = last_time = last_cycle = None
 
@@ -139,14 +147,13 @@ def concatenate_HSD_files(main_test_file, HSD_test_file, adquisition_rate):
             last_load = extract_value(line, 'Load (N)')
             last_cycle = extract_value(line, 'Total Cycles')
             last_time = extract_value(line, 'Test Time')
+
         elif line.startswith('Fast data in'):
             HSD_file_name = sf.extract_HSD_file_name(line)
-            HSD_data = process_HSD_file(HSD_file_name,
-                                        last_cycle,
-                                        last_time,
-                                        last_load,
-                                        adquisition_rate)
-            HSD_data.to_csv(HSD_test_file, mode='a', header=False, index=False)
+            HSD = pd.read_csv(HSD_file_name, skiprows=4, sep='\t')
+            HSD = process_HSD_file(HSD, last_cycle, last_time, last_load, adquisition_rate)
+            HSD.to_csv(HSD_test_file, mode='a', header=False, index=False)
+
         else:
             break
 
@@ -159,11 +166,12 @@ def extract_value(line, column_label):
     "\tTime\tThis Step\tStep Time\tTest Time\t (...) \tStroke (mm)\t"
 
     INPUT:
-        line: string, a TE38 data line
-        column_label: string, a TE38 data column label
+        line: string, a TE38 data line.
+
+        column_label: string, a TE38 data column label.
 
     OUTPUT:
-        float or integer
+        float or integer.
     """
     columns = {'Test Time': (4, float),
                'Load (N)': (7, float),
@@ -181,16 +189,16 @@ def extract_value(line, column_label):
 def digest_main_test_file(file_path):
     """Clean the main test file (that is, the one that does not contain high
     speed data) by removing these elements:
-        - Data previous to the header
-        - Blank space
-        - "test started" and "Test finished" lines
-        - Tabs at the beginning and end of data rows
-        - "Fast data in..." lines
+        - Data previous to the header.
+        - Blank space.
+        - "test started" and "Test finished" lines.
+        - Tabs at the beginning and end of data rows.
+        - "Fast data in..." lines.
 
     Leaves a clean and tidy table to work with.
 
     INPUT:
-        file_path: string, an absolute or relative path to the main test file
+        file_path: string, an absolute or relative path to the main test file.
     """
     file_name_with_extension = sf.extract_file_name(file_path, True)
 

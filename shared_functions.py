@@ -9,16 +9,16 @@ def extract_file_name(file_path, extract_file_extension):
     This function is OS independent.
 
     INPUT:
-        file_path: string
+        file_path: string.
 
-        extract_file_extension: boolean
+        extract_file_extension: boolean.
 
     OUTPUT:
-        string representing the file name
+        string representing the file name.
 
     EXAMPLES:
         'bar.txt', './bar.txt', 'C:\foo\bar.txt' or './foo/bar.txt' will
-        all return 'bar.txt' with the default keyword, otherwise returns 'bar'
+        all return 'bar.txt' with the default keyword, otherwise returns 'bar'.
     """
     file_name_with_extension = os.path.split(file_path)[-1]
 
@@ -34,14 +34,14 @@ def convert_to_csv_format(data_row):
     and trailing tabs, and substitutes the rest of the tabs for commas.
 
     INPUT:
-        data_row: string
+        data_row: string.
 
     OUTPUT:
-        string
+        string.
 
     EXAMPLES:
         '\tvalue 1\tvalue 2\tvalue 3\tvalue 4\tvalue 5\t' returns
-        'value 1,value 2,value 3,value 4,value 5'
+        'value 1,value 2,value 3,value 4,value 5'.
     """
     return str.join('', [data_row.strip().replace('\t', ','), '\n'])
 
@@ -52,14 +52,14 @@ def extract_HSD_file_name(line):
     stored.
 
     INPUT:
-        line: string
+        line: string.
 
     OUTPUT:
-        string
+        string.
 
     EXAMPLES:
         The string 'Fast data in       =HYPERLINK("n762a_castrol_2-h001.tsv")'
-        will return 'n762a_castrol_2-h001.tsv'
+        will return 'n762a_castrol_2-h001.tsv'.
     """
     initial_index = line.find('"') + 1
     final_index = line.find('"', initial_index)
@@ -76,12 +76,12 @@ def skip_lines(file, last_skippable_line):
     to be skipped.
 
     INPUT:
-        file: an opened file object (_io.TextIOWrapper)
+        file: an opened file object (_io.TextIOWrapper).
 
-        last_skippable_line: string or positive integer
+        last_skippable_line: string or positive integer.
 
     OUTPUT:
-        string
+        string.
 
     EXAMPLE:
         If a line represented by the string "High speed data using 1000 Hz
@@ -108,6 +108,7 @@ def skip_lines(file, last_skippable_line):
             line = file.readline()
 
         return line
+
     else:
         raise TypeError('last_skippable_line is not a string or integer')
 
@@ -118,10 +119,10 @@ def extract_adquisition_rate(line):
     found.
 
     INPUT:
-        line: string, file line containing a number followed by "Hz"
+        line: string, file line containing a number followed by "Hz".
 
     OUTPUT:
-        integer
+        integer.
 
     EXAMPLE:
         From the string 'High speed data using 1000 Hz Trigger Frequency.'
@@ -165,11 +166,11 @@ def filter_out_outer_values(data, stroke_label, length_factor):
     a fraction of the wear track's length.
 
     INPUT:
-        data: DataFrame
+        data: DataFrame.
 
-        stroke_label: string, label of the stroke column in data
+        stroke_label: string, label of the stroke column in data.
 
-        length_factor: float between 0.0 and 1.0
+        length_factor: float between 0.0 and 1.0.
 
     OUTPUT:
         DataFrame
@@ -194,13 +195,13 @@ def calculate_cycle_values(data, direction_label, cycle_label, initial_cycle):
     The cycle count starts at the value provided in initial_cycle.
 
     INPUT:
-        data: DataFrame
+        data: DataFrame.
 
         direction_label: string, label of the direction column in data.
 
         cycle_label: string, label for the new cycle column.
 
-        initial_cycle: integer
+        initial_cycle: integer.
     """
     class Tracker:
         """This class acts as a data container for the assign_cycle function,
@@ -215,10 +216,10 @@ def calculate_cycle_values(data, direction_label, cycle_label, initial_cycle):
         sign on the data and the sign assigned just before.
 
         INPUT:
-            sign: integer with values 1 or -1
+            sign: integer with values 1 or -1.
 
         OUTPUT:
-            integer
+            integer.
         """
         if Tracker.initial_sign == sign and Tracker.former_sign != sign:
             Tracker.cycle += 1
