@@ -31,7 +31,7 @@ MODULE STRUCTURE:
 
 
 import os.path
-import HSD
+import shared_functions as sf
 import re
 import pandas as pd
 
@@ -225,11 +225,11 @@ def concatenate_HSD_files(main_test_file, HSD_test_file, adquisition_rate):
             last_time = extract_value(line, 'Test Time')
         elif line.startswith('Fast data in'):
             HSD_file_name = extract_high_speed_file_name(line)
-            HSD_data = HSD.process_data(HSD_file_name,
-                                        last_cycle,
-                                        last_time,
-                                        last_load,
-                                        adquisition_rate)
+            HSD_data = sf.process_data(HSD_file_name,
+                                       last_cycle,
+                                       last_time,
+                                       last_load,
+                                       adquisition_rate)
             HSD_data.to_csv(HSD_test_file, mode='a', header=False, index=False)
         else:
             break
