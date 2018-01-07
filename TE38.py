@@ -16,37 +16,47 @@ These data files are often cumbersome to work with, this module has functions
 to deal with them in the public functions section (see module structure). In
 order to work correctly, some requirements must be fullfilled:
 
-1 - The original file names must be left intact.
-2 - The files' line structure must be left also intact.
-3 - The current working directory must be the same as the directory where the
-    data files live.
+- The original file names must be left intact.
+- The files' line structure must be left also intact.
+- The current working directory must be the same as the directory where the
+  data files live.
 
 It is mandatory to have Python v3.6 and Pandas v0.20 to work propertly.
 
 MODULE STRUCTURE:
     01. CONSTANTS
+
     02. SUBROUTINES
+
     03. PUBLIC FUNCTIONS
 """
 
 
-import os.path
 import shared_functions as sf
-import re
 import pandas as pd
+import numpy as np
 
 # ####################################
 # 01. CONSTANTS
 # ####################################
 
+# High speed data labels, default nomenclature
+CYCLE = 'HSD Cycle'
+STROKE = 'HSD Stroke'
+TIME = 'HSD Time'
+FRICTION = 'HSD Friction'
+LOAD = 'HSD Load'
+COF = 'HSD CoF'
+DIRECTION = 'HSD Direction'
 
-HSD_columns = ['Cycle',
-               'Stroke (mm)',
-               'Contact Potential (mV)',
-               'Friction (N)',
-               'Time (s)',
-               'Load (N)',
-               'CoF']
+# High speed data labels, final nomenclature
+HSD_FINAL_LABELS = ['Cycle',
+                    'Stroke (mm)',
+                    'Contact Potential (mV)',
+                    'Friction (N)',
+                    'Time (s)',
+                    'Load (N)',
+                    'CoF']
 
 
 # ####################################
@@ -54,110 +64,91 @@ HSD_columns = ['Cycle',
 # ####################################
 
 
-def extract_file_name(file_path, extract_file_extension):
-    """Takes a file route and returns the name with or without its extesion.
-    This function is OS independent.
+def process_HSD_file(data_file,
+                     initial_cycle,
+                     initial_time,
+                     initial_load,
+                     frequency_adquisition):
 
-    INPUT:
-        file_path: string
-        extract_file_extension: boolean
+    # Read the tsv data file excluding the first rows
+    data = pd.read_csv(data_file, skiprows=4, sep='\t')
 
-    OUTPUT:
-        string representing the file name
+    # Center the stroke data so the max and min limits are equidistant to
+    # zero
+    limits_average = (data.loc[:, STROKE].max() +
+                      data.loc[:, STROKE].min()) / 2
 
-    EXAMPLES:
-        'bar.txt', './bar.txt', 'C:\foo\bar.txt' or './foo/bar.txt' will
-        all return 'bar.txt' with the default keyword, otherwise returns 'bar'
-    """
-    file_name_with_extension = os.path.split(file_path)[-1]
+    data.loc[:, STROKE] -= limits_average
 
-    if extract_file_extension:
-        return file_name_with_extension
+    # Calculate a time column
+    final_time = initial_time + len(data) / frequency_adquisition
+    data[TIME] = np.linspace(initial_time, final_time, len(data))
+
+    # Calculate a movement direction column
+    directions = data.loc[:, FRICTION].apply(np.sign)
+
+    if directions.isin([-1]).any():
+        data[DIRECTION] = directions
     else:
-        extension_beginning = file_name_with_extension.rfind('.')
-        return file_name_with_extension[:extension_beginning]
+        sf.calculate_movement_directions(data, STROKE, DIRECTION)
+
+    # Calculate the cycle every data row belongs to
+    sf.calculate_cycle_values(data, DIRECTION, CYCLE, initial_cycle)
+
+    # Filter out data that isn't located around the centre
+    filtered_data = sf.filter_out_outer_values(data, STROKE, 0.1)
+
+    # Forces in absolute value
+    HSD_abs_friction = filtered_data.loc[:, FRICTION].abs()
+    filtered_data.loc[:, FRICTION] = HSD_abs_friction
+
+    # Group data by cycle and average values for each group
+    averaged_data = filtered_data.groupby(CYCLE).mean()
+
+    # Add a load column
+    averaged_data[LOAD] = initial_load
+
+    # Calculate a coefficient of friction column
+    HSD_Friction = averaged_data.loc[:, FRICTION]
+    HSD_Load = averaged_data.loc[:, LOAD]
+    averaged_data[COF] = HSD_Friction / HSD_Load
+
+    # Save data
+    averaged_data.drop([DIRECTION, 'HSD Force Input'],
+                       axis=1,
+                       inplace=True)
+    averaged_data.reset_index(inplace=True)
+    return averaged_data
 
 
-def convert_to_csv_format(data_row):
-    """Takes a data row from a Compend 2000 data file, removes the initial
-    and trailing tabs, and substitutes the rest of the tabs for commas.
+def concatenate_HSD_files(main_test_file, HSD_test_file, adquisition_rate):
+    """Concatenates TE38 high speed data (HSD) files into one single file.
 
-    INPUT:
-        data_row: string
-
-    OUTPUT:
-        string
-
-    EXAMPLES:
-        '\tvalue 1\tvalue 2\tvalue 3\tvalue 4\tvalue 5\t' returns
-        'value 1,value 2,value 3,value 4,value 5'
-    """
-    return str.join('', [data_row.strip().replace('\t', ','), '\n'])
-
-
-def extract_high_speed_file_name(line):
-    """Takes a data row that signals the start of high speed data adquisition
-    from a Compend 2000 data file, and returns the name of the data file where
-    it has been stored.
-
-    INPUT:
-        line: string
-
-    OUTPUT:
-        string
-
-    EXAMPLES:
-        The string 'Fast data in       =HYPERLINK("n762a_castrol_2-h001.tsv")'
-        will return 'n762a_castrol_2-h001.tsv'
-    """
-    initial_index = line.find('"') + 1
-    final_index = line.find('"', initial_index)
-    return line[initial_index:final_index]
-
-
-def skip_lines(file, last_skippable_line):
-    """Skips lines in an opened file until last_skippable_line is encountered,
-    the last line to be ignored can be given as a string that represents
-    the line's beginning, or as an integer that represents the index
-    of the last line to be skipped (zero based).
-
-    The function modifies inplace the file object, and returns the last line
-    to be skipped.
+    The function scans through main_test_file looking for lines where high
+    speed data adquisition started, and prepares it before concatenating.
 
     INPUT:
-        file: an opened file object (_io.TextIOWrapper)
-        last_skippable_line: string or positive integer
-
-    OUTPUT:
-        string
-
-    EXAMPLE:
-        If a line represented by the string "High speed data using 1000 Hz
-        Trigger Frequency" is encountered, the function will stop skipping
-        lines if the keyword last_skippable_line has a value like, but not
-        limited to:
-            - "High"
-            - "High speed data"
-            - "High speed data using 1000 Hz Trigger Frequency"
-
-        If the line's index position is known (for instance, it's the line no 4
-        in a text editor), setting a value last_skippable_line=3 will have the
-        same effect.
+        main_test_file: an opened file object (_io.TextIOWrapper)
+        HSD_test_file: an opened file object (_io.TextIOWrapper)
     """
-    if isinstance(last_skippable_line, str):
-        for line in file:
-            if line.startswith(last_skippable_line):
-                return line
-            else:
-                continue
+    last_load = last_time = last_cycle = None
 
-    elif isinstance(last_skippable_line, int):
-        for line_number in range(last_skippable_line):
-            line = file.readline()
+    for line in main_test_file:
 
-        return line
-    else:
-        raise TypeError('last_skippable_line is not a string or integer')
+        if line.startswith('\t'):
+            last_load = extract_value(line, 'Load (N)')
+            last_cycle = extract_value(line, 'Total Cycles')
+            last_time = extract_value(line, 'Test Time')
+        elif line.startswith('Fast data in'):
+            HSD_file_name = sf.extract_HSD_file_name(line)
+            HSD_data = process_HSD_file(HSD_file_name,
+                                        last_cycle,
+                                        last_time,
+                                        last_load,
+                                        adquisition_rate)
+            HSD_data.to_csv(HSD_test_file, mode='a', header=False, index=False)
+        else:
+            break
 
 
 def extract_value(line, column_label):
@@ -182,59 +173,6 @@ def extract_value(line, column_label):
     return convert(line.split('\t')[index])
 
 
-def extract_adquisition_rate(line):
-    """Extracts the adquisition rate in Hz from the line of text that
-    is supposed to contain that information. Raises an exception if it is not
-    found.
-
-    INPUT:
-        line: string, file line containing a number followed by "Hz"
-
-    OUTPUT:
-        integer
-
-    EXAMPLE:
-        From the string 'High speed data using 1000 Hz Trigger Frequency.'
-        the function will return 1000.
-    """
-    match = re.search(r'(\d+) Hz', line)
-
-    if match:
-        return int(match.group(1))
-    else:
-        raise RuntimeError(f'Adquisition rate not found in line: {line}')
-
-
-def concatenate_HSD_files(main_test_file, HSD_test_file, adquisition_rate):
-    """Concatenates TE38 high speed data (HSD) files into one single file.
-
-    The function scans through main_test_file looking for lines where high
-    speed data adquisition started, and prepares it before concatenating.
-
-    INPUT:
-        main_test_file: an opened file object (_io.TextIOWrapper)
-        HSD_test_file: an opened file object (_io.TextIOWrapper)
-    """
-    last_load = last_time = last_cycle = None
-
-    for line in main_test_file:
-
-        if line.startswith('\t'):
-            last_load = extract_value(line, 'Load (N)')
-            last_cycle = extract_value(line, 'Total Cycles')
-            last_time = extract_value(line, 'Test Time')
-        elif line.startswith('Fast data in'):
-            HSD_file_name = extract_high_speed_file_name(line)
-            HSD_data = sf.process_data(HSD_file_name,
-                                       last_cycle,
-                                       last_time,
-                                       last_load,
-                                       adquisition_rate)
-            HSD_data.to_csv(HSD_test_file, mode='a', header=False, index=False)
-        else:
-            break
-
-
 # #####################################
 # 03. PUBLIC FUNCTIONS
 # #####################################
@@ -254,17 +192,17 @@ def digest_main_test_file(file_path):
     INPUT:
         file_path: string, an absolute or relative path to the main test file
     """
-    file_name_with_extension = extract_file_name(file_path, True)
+    file_name_with_extension = sf.extract_file_name(file_path, True)
 
     with open(file_name_with_extension) as source_file:
-        skip_lines(source_file, 'Test started at')
+        sf.skip_lines(source_file, 'Test started at')
 
         data = pd.read_csv(source_file, sep='\t')
         real_number_of_columns = len(data.columns) - 2
         data.dropna(thresh=real_number_of_columns, inplace=True)
         data.dropna(axis=1, how='all', inplace=True)
 
-    file_name = extract_file_name(file_path, False)
+    file_name = sf.extract_file_name(file_path, False)
     data.to_csv(f'{file_name}.csv', index=False)
 
 
@@ -280,20 +218,20 @@ def digest_HSD_test_files(file_path):
     INPUT:
         file_path: string, an absolute or relative path to the main test file.
     """
-    HSD_header = ','.join(HSD_columns)
-    file_name = extract_file_name(file_path, False)
-    file_name_with_extension = extract_file_name(file_path, True)
+    HSD_header = ','.join(HSD_FINAL_LABELS)
+    file_name = sf.extract_file_name(file_path, False)
+    file_name_with_extension = sf.extract_file_name(file_path, True)
     first_HSD_name = file_name_with_extension.replace('.', '-h001.')
 
     with open(first_HSD_name) as first_HSD_file:
-        line = skip_lines(first_HSD_file, 'High speed data')
+        line = sf.skip_lines(first_HSD_file, 'High speed data')
 
-    adquisition_rate = extract_adquisition_rate(line)
+    adquisition_rate = sf.extract_adquisition_rate(line)
 
     with open(file_name_with_extension) as source_file, \
         open(f'{file_name}_HSD.csv', 'w') as HSD_file:
 
         HSD_file.write(HSD_header + '\n')
-        skip_lines(source_file, 'Test started at')
+        sf.skip_lines(source_file, 'Test started at')
         source_file.readline()
         concatenate_HSD_files(source_file, HSD_file, adquisition_rate)

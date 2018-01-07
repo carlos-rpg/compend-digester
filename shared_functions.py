@@ -1,5 +1,138 @@
 import numpy as np
 import pandas as pd
+import os.path
+import re
+
+
+def extract_file_name(file_path, extract_file_extension):
+    """Takes a file route and returns the name with or without its extesion.
+    This function is OS independent.
+
+    INPUT:
+        file_path: string
+
+        extract_file_extension: boolean
+
+    OUTPUT:
+        string representing the file name
+
+    EXAMPLES:
+        'bar.txt', './bar.txt', 'C:\foo\bar.txt' or './foo/bar.txt' will
+        all return 'bar.txt' with the default keyword, otherwise returns 'bar'
+    """
+    file_name_with_extension = os.path.split(file_path)[-1]
+
+    if extract_file_extension:
+        return file_name_with_extension
+    else:
+        extension_beginning = file_name_with_extension.rfind('.')
+        return file_name_with_extension[:extension_beginning]
+
+
+def convert_to_csv_format(data_row):
+    """Takes a data row from a Compend 2000 data file, removes the initial
+    and trailing tabs, and substitutes the rest of the tabs for commas.
+
+    INPUT:
+        data_row: string
+
+    OUTPUT:
+        string
+
+    EXAMPLES:
+        '\tvalue 1\tvalue 2\tvalue 3\tvalue 4\tvalue 5\t' returns
+        'value 1,value 2,value 3,value 4,value 5'
+    """
+    return str.join('', [data_row.strip().replace('\t', ','), '\n'])
+
+
+def extract_HSD_file_name(line):
+    """Takes a Compend 2000 data line that signals the start of high speed
+    data adquisition, and returns the name of the data file where it has been
+    stored.
+
+    INPUT:
+        line: string
+
+    OUTPUT:
+        string
+
+    EXAMPLES:
+        The string 'Fast data in       =HYPERLINK("n762a_castrol_2-h001.tsv")'
+        will return 'n762a_castrol_2-h001.tsv'
+    """
+    initial_index = line.find('"') + 1
+    final_index = line.find('"', initial_index)
+    return line[initial_index:final_index]
+
+
+def skip_lines(file, last_skippable_line):
+    """Skips lines in an opened file until last_skippable_line is encountered,
+    the last line to be ignored can be given as a string that represents
+    the line's beginning, or as an integer that represents the index
+    of the last line to be skipped (zero based).
+
+    The function modifies inplace the file object, and returns the last line
+    to be skipped.
+
+    INPUT:
+        file: an opened file object (_io.TextIOWrapper)
+
+        last_skippable_line: string or positive integer
+
+    OUTPUT:
+        string
+
+    EXAMPLE:
+        If a line represented by the string "High speed data using 1000 Hz
+        Trigger Frequency" is encountered, the function will stop skipping
+        lines if the keyword last_skippable_line has a value like, but not
+        limited to:
+            - "High"
+            - "High speed data"
+            - "High speed data using 1000 Hz Trigger Frequency"
+
+        If the line's index position is known (for instance, it's the line no 4
+        in a text editor), setting a value last_skippable_line=3 will have the
+        same effect.
+    """
+    if isinstance(last_skippable_line, str):
+        for line in file:
+            if line.startswith(last_skippable_line):
+                return line
+            else:
+                continue
+
+    elif isinstance(last_skippable_line, int):
+        for line_number in range(last_skippable_line):
+            line = file.readline()
+
+        return line
+    else:
+        raise TypeError('last_skippable_line is not a string or integer')
+
+
+def extract_adquisition_rate(line):
+    """Extracts the adquisition rate in Hz from the line of text that
+    is supposed to contain that information. Raises an exception if it is not
+    found.
+
+    INPUT:
+        line: string, file line containing a number followed by "Hz"
+
+    OUTPUT:
+        integer
+
+    EXAMPLE:
+        From the string 'High speed data using 1000 Hz Trigger Frequency.'
+        the function will return 1000.
+    """
+    match = re.search(r'(\d+) Hz', line)
+
+    if match:
+        return int(match.group(1))
+    else:
+        raise RuntimeError(f'Adquisition rate not found in line: {line}')
 
 
 def calculate_movement_directions(data, stroke_label, direction_label):
@@ -9,7 +142,9 @@ def calculate_movement_directions(data, stroke_label, direction_label):
 
     INPUTS:
         data: DataFrame.
+
         stroke_label: string, label of the stroke column in data.
+
         direction_label: string, label for the new direction column.
     """
     empty_end_value = pd.Series(np.nan, index=[len(data)])
@@ -31,7 +166,9 @@ def filter_out_outer_values(data, stroke_label, length_factor):
 
     INPUT:
         data: DataFrame
+
         stroke_label: string, label of the stroke column in data
+
         length_factor: float between 0.0 and 1.0
 
     OUTPUT:
@@ -52,14 +189,17 @@ def filter_out_outer_values(data, stroke_label, length_factor):
 
 
 def calculate_cycle_values(data, direction_label, cycle_label, initial_cycle):
-    """From the data in the HSD Direction column, the cycle that
-    every data row belongs to is calculated and added as a new data column.
+    """The cycle every data row belongs to is calculated from the direction
+    column and added as a new data column.
     The cycle count starts at the value provided in initial_cycle.
 
     INPUT:
         data: DataFrame
+
         direction_label: string, label of the direction column in data.
+
         cycle_label: string, label for the new cycle column.
+
         initial_cycle: integer
     """
     class Tracker:
@@ -87,60 +227,3 @@ def calculate_cycle_values(data, direction_label, cycle_label, initial_cycle):
         return Tracker.cycle
 
     data[cycle_label] = data.loc[:, direction_label].apply(assign_cycle)
-
-
-def process_data(data_file,
-                 initial_cycle,
-                 initial_time,
-                 initial_load,
-                 frequency_adquisition):
-
-    # Read the tsv data file excluding the first rows
-    data = pd.read_csv(data_file, skiprows=4, sep='\t')
-
-    # Center the stroke data so the max and min limits are equidistant to
-    # zero
-    limits_average = (data.loc[:, 'HSD Stroke'].max() +
-                      data.loc[:, 'HSD Stroke'].min()) / 2
-
-    data.loc[:, 'HSD Stroke'] -= limits_average
-
-    # Calculate a time column
-    final_time = initial_time + len(data) / frequency_adquisition
-    data['HSD Time'] = np.linspace(initial_time, final_time, len(data))
-
-    # Calculate a movement direction column
-    directions = data.loc[:, 'HSD Friction'].apply(np.sign)
-
-    if directions.isin([-1]).any():
-        data['HSD Direction'] = directions
-    else:
-        calculate_movement_directions(data, 'HSD Stroke', 'HSD Direction')
-
-    # Calculate the cycle every data row belongs to
-    calculate_cycle_values(data, 'HSD Direction', 'HSD Cycle', initial_cycle)
-
-    # Filter out data that isn't located around the centre
-    filtered_data = filter_out_outer_values(data, 'HSD Stroke', 0.1)
-
-    # Forces in absolute value
-    HSD_abs_friction = filtered_data.loc[:, 'HSD Friction'].abs()
-    filtered_data.loc[:, 'HSD Friction'] = HSD_abs_friction
-
-    # Group data by cycle and average values for each group
-    averaged_data = filtered_data.groupby('HSD Cycle').mean()
-
-    # Add a load column
-    averaged_data['HSD Load'] = initial_load
-
-    # Calculate a coefficient of friction column
-    HSD_Friction = averaged_data.loc[:, 'HSD Friction']
-    HSD_Load = averaged_data.loc[:, 'HSD Load']
-    averaged_data['HSD CoF'] = HSD_Friction / HSD_Load
-
-    # Save data
-    averaged_data.drop(['HSD Direction', 'HSD Force Input'],
-                       axis=1,
-                       inplace=True)
-    averaged_data.reset_index(inplace=True)
-    return averaged_data
