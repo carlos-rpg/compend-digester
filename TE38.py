@@ -50,11 +50,12 @@ COF = 'HSD CoF'
 DIRECTION = 'HSD Direction'
 
 # High speed data labels, final nomenclature
-HSD_FINAL_LABELS = ['Cycle',
-                    'Stroke (mm)',
+HSD_FINAL_LABELS = ['Stroke (mm)',
                     'Contact Potential (mV)',
                     'Friction (N)',
                     'Time (s)',
+                    'Movement direction',
+                    'Cycle',
                     'Load (N)',
                     'CoF']
 
@@ -64,7 +65,7 @@ HSD_FINAL_LABELS = ['Cycle',
 # ####################################
 
 
-def process_HSD_file(data, init_cycle, init_time, init_load, adquisition_rate):
+def improve_HSD_file(data, init_values, adquisition_rate):
     """Takes a dataframe and a series of initial values, and applies several
     transformations to make the data more useful. Every transformation is
     explained in a comment.
@@ -72,18 +73,10 @@ def process_HSD_file(data, init_cycle, init_time, init_load, adquisition_rate):
     INPUT:
         data: DataFrame, high speed data.
 
-        init_cycle: integer, all calculated cycle values are relative to
-                    this one.
-
-        init_time: float, all calculated time values are relative to this
-                   one. value in seconds.
-
-        init_load: float, value in Newtons.
+        init_values: dictionary, contains the three initial values cycle (int),
+                     time (float, in seconds), and load (float, in Newtorns).
 
         adquisition_rate: integer, value in Hz.
-
-    OUTPUT:
-        DataFrame
     """
     # Center the stroke data so the max and min limits are equidistant to
     # zero
@@ -93,65 +86,55 @@ def process_HSD_file(data, init_cycle, init_time, init_load, adquisition_rate):
     data.loc[:, STROKE] -= limits_average
 
     # Calculate a time column
-    final_time = init_time + len(data) / adquisition_rate
-    data[TIME] = np.linspace(init_time, final_time, len(data))
+    final_time = init_values['time'] + len(data) / adquisition_rate
+    data[TIME] = np.linspace(init_values['time'], final_time, len(data))
 
     # Calculate a movement direction column
     data[DIRECTION] = data.loc[:, FRICTION].apply(np.sign)
 
     # Calculate the cycle every data row belongs to
-    sf.calculate_cycle_values(data, DIRECTION, CYCLE, init_cycle)
+    sf.calculate_cycle_values(data, DIRECTION, CYCLE, init_values['cycle'])
 
-    # Filter out data that isn't located around the centre
-    filtered_data = sf.filter_out_outer_values(data, STROKE, 0.1)
-
-    # Forces in absolute value
-    HSD_abs_friction = filtered_data.loc[:, FRICTION].abs()
-    filtered_data.loc[:, FRICTION] = HSD_abs_friction
-
-    # Group data by cycle and average values for each group
-    averaged_data = filtered_data.groupby(CYCLE).mean()
+    # Friction forces in absolute value
+    HSD_abs_friction = data.loc[:, FRICTION].abs()
+    data.loc[:, FRICTION] = HSD_abs_friction
 
     # Add a load column
-    averaged_data[LOAD] = init_load
+    data[LOAD] = init_values['load']
 
     # Calculate a coefficient of friction column
-    HSD_Friction = averaged_data.loc[:, FRICTION]
-    HSD_Load = averaged_data.loc[:, LOAD]
-    averaged_data[COF] = HSD_Friction / HSD_Load
+    data[COF] = data.loc[:, FRICTION] / data.loc[:, LOAD]
 
-    # Save data
-    averaged_data.drop([DIRECTION, 'HSD Force Input'],
-                       axis=1,
-                       inplace=True)
-    averaged_data.reset_index(inplace=True)
-    return averaged_data
+    # Drop useless columns
+    data.drop('HSD Force Input', axis=1, inplace=True)
 
 
 def concatenate_HSD_files(main_test_file, HSD_test_file, adquisition_rate):
     """Concatenates TE38 high speed data (HSD) files into one single file.
 
     The function scans through main_test_file looking for lines where high
-    speed data adquisition started, and prepares it before concatenating.
+    speed data adquisition started, and improves it before concatenating.
 
     INPUT:
         main_test_file: an opened file object (_io.TextIOWrapper).
 
         HSD_test_file: an opened file object (_io.TextIOWrapper).
+
+        adquisition_rate: positive integer
     """
-    last_load = last_time = last_cycle = None
+    init_values = dict()
 
     for line in main_test_file:
 
         if line.startswith('\t'):
-            last_load = extract_value(line, 'Load (N)')
-            last_cycle = extract_value(line, 'Total Cycles')
-            last_time = extract_value(line, 'Test Time')
+            init_values['load'] = extract_value(line, 'Load (N)')
+            init_values['cycle'] = extract_value(line, 'Total Cycles')
+            init_values['time'] = extract_value(line, 'Test Time')
 
         elif line.startswith('Fast data in'):
             HSD_file_name = sf.extract_HSD_file_name(line)
             HSD = pd.read_csv(HSD_file_name, skiprows=4, sep='\t')
-            HSD = process_HSD_file(HSD, last_cycle, last_time, last_load, adquisition_rate)
+            improve_HSD_file(HSD, init_values, adquisition_rate)
             HSD.to_csv(HSD_test_file, mode='a', header=False, index=False)
 
         else:
@@ -219,9 +202,10 @@ def digest_HSD_test_files(file_path):
     on the main test file (that is, the one that does not contain high speed
     data), and creates a new file that:
         - Removes text previous to the header.
-        - Adds new data columns: cycle, load, and time.
-        - Summarizes the data per cycle, and only with the values located
-          around the center of the wear track.
+        - Gathers in a single place all HSD files.
+        - Adds new data columns: cycle, load, movement direction, time, and
+          coefficient of friction.
+        - Gives more informative labels to the data rows.
 
     INPUT:
         file_path: string, an absolute or relative path to the main test file.
