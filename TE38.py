@@ -227,3 +227,17 @@ def digest_HSD_test_files(file_path):
         sf.skip_lines(source_file, 'Test started at')
         source_file.readline()
         concatenate_HSD_files(source_file, HSD_file, adquisition_rate)
+
+
+def digest_dynamic_cof(data_file):
+    """Filters out values that don't belong in the wear track's center, and
+    computes an average value of every column for every cycle value.
+
+    data_file: string
+    """
+    data = pd.read_csv(data_file)
+    filtered_data = sf.filter_out_outer_values(data, 'Stroke (mm)', 0.1)
+    averaged_data = filtered_data.groupby('Cycle').mean()
+
+    data_file_name = sf.extract_file_name(data_file, False)
+    averaged_data.to_csv(f'{data_file_name}_dynamic_cof.csv', index=False)
