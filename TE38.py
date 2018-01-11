@@ -229,16 +229,27 @@ def digest_HSD_test_files(file_path):
         concatenate_HSD_files(source_file, HSD_file, adquisition_rate)
 
 
-def digest_dynamic_cof(data_file):
+def digest_dynamic_cof(file_path):
     """Filters out values that don't belong in the wear track's center, and
     computes an average value of every column for every cycle value.
 
-    data_file: string
+    file_path: string
     """
-    data = pd.read_csv(data_file)
+    data = pd.read_csv(file_path)
     filtered_data = sf.filter_out_outer_values(data, 'Stroke (mm)', 0.1)
     averaged_data = filtered_data.groupby('Cycle').mean()
     averaged_data.drop('Movement direction', axis=1, inplace=True)
 
-    data_file_name = sf.extract_file_name(data_file, False)
+    data_file_name = sf.extract_file_name(file_path, False)
     averaged_data.to_csv(f'{data_file_name}_dynamic_cof.csv')
+
+
+def digest(file_path):
+    """Merges several digest functions into one.
+
+    file_path: string
+    """
+    digest_main_test_file(file_path)
+    digest_HSD_test_files(file_path)
+    file_name = sf.extract_file_name(file_path, False)
+    digest_dynamic_cof(f'{file_name}_HSD.csv')
