@@ -238,6 +238,7 @@ def digest_dynamic_cof(data_file):
     data = pd.read_csv(data_file)
     filtered_data = sf.filter_out_outer_values(data, 'Stroke (mm)', 0.1)
     averaged_data = filtered_data.groupby('Cycle').mean()
+    averaged_data.drop('Movement direction', axis=1, inplace=True)
 
     data_file_name = sf.extract_file_name(data_file, False)
     averaged_data.to_csv(f'{data_file_name}_dynamic_cof.csv')
