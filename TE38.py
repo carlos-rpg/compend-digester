@@ -48,6 +48,7 @@ FRICTION = 'HSD Friction'
 LOAD = 'HSD Load'
 COF = 'HSD CoF'
 DIRECTION = 'HSD Direction'
+FREQUENCY = 'HSD Frequency'
 
 # High speed data labels, final nomenclature
 HSD_FINAL_LABELS = ['Stroke (mm)',
@@ -57,7 +58,8 @@ HSD_FINAL_LABELS = ['Stroke (mm)',
                     'Movement direction',
                     'Cycle',
                     'Load (N)',
-                    'CoF']
+                    'CoF',
+                    'Frequency (Hz)']
 
 
 # ####################################
@@ -74,7 +76,8 @@ def improve_HSD_file(data, init_values, adquisition_rate):
         data: DataFrame, high speed data.
 
         init_values: dictionary, contains the three initial values cycle (int),
-                     time (float, in seconds), and load (float, in Newtorns).
+                     time (float, in seconds), load (float, in Newtorns), and
+                     movement frequency (float, in Hz).
 
         adquisition_rate: integer, value in Hz.
     """
@@ -105,6 +108,9 @@ def improve_HSD_file(data, init_values, adquisition_rate):
     # Calculate a coefficient of friction column
     data[COF] = data.loc[:, FRICTION] / data.loc[:, LOAD]
 
+    # Add a movement frequency column
+    data[FREQUENCY] = init_values['frequency']
+
     # Drop useless columns
     data.drop('HSD Force Input', axis=1, inplace=True)
 
@@ -130,6 +136,7 @@ def concatenate_HSD_files(main_test_file, HSD_test_file, adquisition_rate):
             init_values['load'] = extract_value(line, 'Load (N)')
             init_values['cycle'] = extract_value(line, 'Total Cycles')
             init_values['time'] = extract_value(line, 'Test Time')
+            init_values['frequency'] = extract_value(line, 'Frequency (Hz)')
 
         elif line.startswith('Fast data in'):
             HSD_file_name = sf.extract_HSD_file_name(line)
@@ -157,6 +164,7 @@ def extract_value(line, column_label):
         float or integer.
     """
     columns = {'Test Time': (4, float),
+               'Frequency (Hz)': (6, float),
                'Load (N)': (7, float),
                'Total Cycles': (11, int)}
 
